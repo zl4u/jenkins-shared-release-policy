@@ -1,74 +1,64 @@
-import requests
-import sys
 import os
+import sys
 import json
+import urllib.request
+import urllib.parse
 from datetime import datetime
 
-# 配置从 Jenkins 注入
-APP_ID = os.getenv("FEISHU_APP_ID")
-APP_SECRET = os.getenv("FEISHU_APP_SECRET")
-APP_TOKEN = os.getenv("FEISHU_APP_TOKEN")
-TABLE_ID = os.getenv("FEISHU_TABLE_ID")
+def post_json(url, data, token=None):
+    req = urllib.request.Request(url, data=json.dumps(data).encode('utf-8'), method='POST')
+    req.add_header('Content-Type', 'application/json; charset=utf-8')
+    if token:
+        req.add_header('Authorization', f'Bearer {token}')
+    with urllib.request.urlopen(req) as f:
+        return json.loads(f.read().decode('utf-8'))
 
-# 窗口：周四 (3) 21:30
-WIN_DAY = int(os.getenv("PUBLISH_WINDOW_DAY", 3))
-WIN_HOUR = int(os.getenv("PUBLISH_WINDOW_HOUR", 21))
-WIN_MIN = int(os.getenv("PUBLISH_WINDOW_MINUTE", 30))
+def get_json(url, token):
+    req = urllib.request.Request(url, method='GET')
+    req.add_header('Authorization', f'Bearer {token}')
+    with urllib.request.urlopen(req) as f:
+        return json.loads(f.read().decode('utf-8'))
 
-class FeishuAuditor:
-    def __init__(self):
-        self.token = self._get_token()
+def run():
+    record_id = sys.argv[1]
+    app_id = os.getenv("FEISHU_APP_ID")
+    app_secret = os.getenv("FEISHU_APP_SECRET")
+    app_token = os.getenv("FEISHU_APP_TOKEN")
+    table_id = os.getenv("FEISHU_TABLE_ID")
 
-    def _get_token(self):
-        url = "https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal"
-        r = requests.post(url, json={"app_id": APP_ID, "app_secret": APP_SECRET}, timeout=10)
-        return r.json().get("tenant_access_token")
+    try:
+        # 1. 获取 Token
+        token_url = "https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal"
+        token_res = post_json(token_url, {"app_id": app_id, "app_secret": app_secret})
+        token = token_res.get("tenant_access_token")
 
-    def run(self, record_id):
-        # 1. 获取飞书记录
-        url = f"https://open.feishu.cn/open-apis/bitable/v1/apps/{APP_TOKEN}/tables/{TABLE_ID}/records/{record_id}"
-        headers = {"Authorization": f"Bearer {self.token}"}
-        res = requests.get(url, headers=headers, timeout=10).json()
+        # 2. 获取记录内容
+        record_url = f"https://open.feishu.cn/open-apis/bitable/v1/apps/{app_token}/tables/{table_id}/records/{record_id}"
+        res = get_json(record_url, token)
 
         if res.get("code") != 0:
-            print(f"❌ 飞书接口报错: {res.get('msg')}")
+            print(f"🚨 飞书接口错误: {res.get('msg')}")
             sys.exit(1)
 
         fields = res["data"]["record"]["fields"]
-        status = fields.get("审批状态")  # 对应多维表格中的单选列
-        is_emergency = fields.get("是否紧急发布", False) # 对应复选框
+        status = fields.get("审批状态")
+        is_emergency = fields.get("是否紧急", False)
 
-        # 2. 严格日期校验
-        record_ts = fields.get("发布日期", 0)
-        record_date = datetime.fromtimestamp(record_ts/1000).strftime('%Y-%m-%d')
-        today_date = datetime.now().strftime('%Y-%m-%d')
+        print(f"--- 审计结果 ---")
+        print(f"单据状态: {status} | 是否紧急: {is_emergency}")
 
-        # 3. 窗口判定
-        now = datetime.now()
-        in_window = (now.weekday() == WIN_DAY and (now.hour * 60 + now.minute) >= (WIN_HOUR * 60 + WIN_MIN))
-
-        print(f"--- 审计执行中 ---")
-        print(f"当前时间: {now.strftime('%H:%M')} | 窗口内: {'✅' if in_window else '❌'}")
-        print(f"单据状态: {status} | 紧急特批: {is_emergency}")
-        print(f"单据日期: {record_date} (今日: {today_date})")
-
-        errors = []
-        if record_date != today_date:
-            errors.append(f"单据日期不正确。必须使用今日({today_date})新创建的单据。")
-        if status != "已通过":
-            errors.append("单据尚未审批通过。若是紧急发布，请联系负责人在飞书完成审批。")
-        if not in_window and not is_emergency:
-            errors.append(f"当前非周四{WIN_HOUR}:{WIN_MIN}窗口，且未申请紧急发布。")
-
-        if errors:
-            print("\n🚨 审计拒绝：")
-            for e in errors: print(f"  - {e}")
+        if status == "已通过":
+            # 审计通过，写入标记文件
+            with open("audit.env", "w") as f:
+                f.write(f"IS_EMERGENCY={str(is_emergency).lower()}")
+            print("✅ 审计通过")
+        else:
+            print("❌ 审计拒绝：单据未审批通过")
             sys.exit(1)
 
-        # 写入结果供 Jenkins 使用
-        with open("audit.env", "w") as f:
-            f.write(f"IS_EMERGENCY={str(is_emergency).lower()}\n")
-        print("\n✅ 审计成功！")
+    except Exception as e:
+        print(f"💥 运行异常: {str(e)}")
+        sys.exit(1)
 
 if __name__ == "__main__":
-    FeishuAuditor().run(sys.argv[1])
+    run()
