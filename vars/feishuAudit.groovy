@@ -10,6 +10,7 @@ def call(String recordId) {
         string(credentialsId: 'FEISHU_APP_SECRET', variable: 'FEISHU_APP_SECRET')
     ]) {
         script {
+            sh "python3 -m pip install requests --user"
             // 此时 Python 进程的环境变量里就有了：
             // - 来自 withCredentials 的 APP_ID 和 APP_SECRET
             // - 来自 Jenkins 全局配置的 TOKEN 和 TABLE_ID
