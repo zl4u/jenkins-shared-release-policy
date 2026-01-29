@@ -9,7 +9,7 @@ def call(String recordId) {
     ]) {
         script {
             // 直接运行 Python，不使用 pip
-            sh "python3 feishu_audit.py ${recordId}"
+            sh "python3 feishu_audit.py ${recordId} ${env.PROJECT_NAME}"
 
             // 用简单的 shell 命令读取结果，绕过 readJSON 插件
             def emergencyStr = sh(script: "grep 'IS_EMERGENCY' audit.env | cut -d'=' -f2", returnStdout: true).trim()
