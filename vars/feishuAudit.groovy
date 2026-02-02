@@ -7,7 +7,7 @@ def call(String recordId) {
     def envName = env.ENV_NAME // 例如 'prod'
 
     // 3. 核心判定逻辑
-    if (envName == 'prod') {
+    if (envName == 'prodd') {
         echo "🛡️ 检测到正式环境 (PROD) 发布，启动强制审计流程..."
 
         // 安全红线：PROD 环境必须是 master 分支
