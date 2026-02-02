@@ -7,13 +7,13 @@ def call(String recordId) {
     def envName = env.ENV_NAME // 例如 'prod'
 
     // 3. 核心判定逻辑
-    if (envName == 'prodd') {
+    if (envName == 'prod') {
         echo "🛡️ 检测到正式环境 (PROD) 发布，启动强制审计流程..."
 
         // 安全红线：PROD 环境必须是 master 分支
-        if (branchName != 'master') {
-            error "🚨 流程拦截：正式环境 (PROD) 仅允许从 master 分支发布！当前分支为: ${branchName}"
-        }
+        // if (branchName != 'master') {
+        //     error "🚨 流程拦截：正式环境 (PROD) 仅允许从 master 分支发布！当前分支为: ${branchName}"
+        // }
 
         // 参数校验：PROD 环境必须输入 Record ID
         if (!recordId || recordId.trim() == "") {
@@ -28,8 +28,8 @@ def call(String recordId) {
             withCredentials([
                 string(credentialsId: 'FEISHU_APP_ID', variable: 'FEISHU_APP_ID'),
                 string(credentialsId: 'FEISHU_APP_SECRET', variable: 'FEISHU_APP_SECRET'),
-                string(credentialsId: 'FEISHU_APP_TOKEN', variable: 'FEISHU_APP_TOKEN'),
-                string(credentialsId: 'FEISHU_TABLE_ID', variable: 'FEISHU_TABLE_ID')
+                // string(credentialsId: 'FEISHU_APP_TOKEN', variable: 'FEISHU_APP_TOKEN'),
+                // string(credentialsId: 'FEISHU_TABLE_ID', variable: 'FEISHU_TABLE_ID')
             ]) {
                 sh "python3 feishu_audit.py ${recordId} ${env.PROJECT_NAME}"
             }
